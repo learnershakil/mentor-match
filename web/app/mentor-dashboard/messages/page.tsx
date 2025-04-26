@@ -1467,22 +1467,22 @@ export default function MentorMessagesPage() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {/* <TooltipProvider>
+                    <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setIsCallModalOpen(true)}
-                        >
-                          <Video className="h-4 w-4" />
-                        </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => window.location.href = 'http://localhost:5173/Private%20Call'}
+                      >
+                        <Video className="h-4 w-4" />
+                      </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Video call</p>
+                      <p>Video call</p>
                       </TooltipContent>
                     </Tooltip>
-                  </TooltipProvider> */}
+                    </TooltipProvider>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

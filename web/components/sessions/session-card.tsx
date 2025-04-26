@@ -298,9 +298,11 @@ export function SessionCard({
   const handleJoinSession = () => {
     if (!session.joinUrl) {
       toast.error("No join link available");
+      window.open(`http://localhost:5173/Session%20${session.category}`, "_blank");
       return;
     }
-    window.open(session.joinUrl, "_blank");
+    window.open(`http://localhost:5173/Session:%20${session.category}`, "_blank");
+    // window.open(session.joinUrl, "_blank");
   };
 
   const handleViewRecording = () => {

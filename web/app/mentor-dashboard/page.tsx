@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, Timer, ClipboardCheck, Star, MessageSquare } from "lucide-react";
+import {
+  Users,
+  Timer,
+  ClipboardCheck,
+  Star,
+  MessageSquare,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { MentorDashboardShell } from "@/components/mentor-dashboard/mentor-dashboard-shell";
@@ -20,28 +26,36 @@ export default function MentorDashboardPage() {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch('/api/mentor/dashboard');
-        
+        const response = await fetch("/api/mentor/dashboard");
+
         if (!response.ok) {
-          throw new Error('Failed to fetch dashboard data');
+          throw new Error("Failed to fetch dashboard data");
         }
-        
+
         const data = await response.json();
         setDashboardData(data);
+
+        // Store mentor name in localStorage for access from http://localhost:5173
+        if (data?.mentor?.name) {
+          localStorage.setItem("displayName", data.mentor.name);
+          console.log(
+            `Set displayName "${data.mentor.name}" in localStorage - this will be accessible when visiting http://localhost:5173`
+          );
+        }
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        setError('Could not load your dashboard. Please try again later.');
-        toast.error('Failed to load dashboard data');
+        console.error("Error fetching dashboard data:", error);
+        setError("Could not load your dashboard. Please try again later.");
+        toast.error("Failed to load dashboard data");
       } finally {
         setIsLoading(false);
       }
     };
-    
+
     fetchDashboardData();
   }, []);
 
@@ -61,13 +75,15 @@ export default function MentorDashboardPage() {
 
   return (
     <MentorDashboardShell>
-      <MentorDashboardHeader 
-        heading={`Welcome, ${dashboardData?.mentor?.name?.split(' ')[0] || 'Mentor'}`}
+      <MentorDashboardHeader
+        heading={`Welcome, ${
+          dashboardData?.mentor?.name?.split(" ")[0] || "Mentor"
+        }`}
         text="Manage your mentoring activities and students"
       >
         <NotificationsButton />
       </MentorDashboardHeader>
-      
+
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
           <>
@@ -80,34 +96,36 @@ export default function MentorDashboardPage() {
           </>
         ) : (
           <>
-            <MentorStatsCard 
-              title="Total Students" 
-              value={String(dashboardData?.stats?.totalStudents || '0')} 
+            <MentorStatsCard
+              title="Total Students"
+              value={String(dashboardData?.stats?.totalStudents || "0")}
               icon={Users}
               trend={{ value: "3", positive: true }}
             />
-            <MentorStatsCard 
-              title="Sessions Conducted" 
-              value={String(dashboardData?.stats?.totalSessions || '0')} 
+            <MentorStatsCard
+              title="Sessions Conducted"
+              value={String(dashboardData?.stats?.totalSessions || "0")}
               icon={Timer}
               trend={{ value: "5", positive: true }}
             />
-            <MentorStatsCard 
-              title="Assignments Created" 
-              value={String(dashboardData?.stats?.totalAssignments || '0')} 
+            <MentorStatsCard
+              title="Assignments Created"
+              value={String(dashboardData?.stats?.totalAssignments || "0")}
               icon={ClipboardCheck}
               trend={{ value: "2", positive: true }}
             />
-            <MentorStatsCard 
-              title="Rating" 
-              value={String(dashboardData?.stats?.rating?.toFixed(1) || '0.0')} 
+            <MentorStatsCard
+              title="Rating"
+              value={String(dashboardData?.stats?.rating?.toFixed(1) || "0.0")}
               icon={Star}
-              description={`Based on ${dashboardData?.stats?.reviewCount || 0} reviews`}
+              description={`Based on ${
+                dashboardData?.stats?.reviewCount || 0
+              } reviews`}
             />
           </>
         )}
       </div>
-      
+
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {isLoading ? (
           <>
@@ -130,16 +148,18 @@ export default function MentorDashboardPage() {
           </>
         ) : (
           <>
-            <MentorScheduleCard 
-              sessions={dashboardData?.upcomingSessions || []} 
+            <MentorScheduleCard
+              sessions={dashboardData?.upcomingSessions || []}
             />
-            <AssignmentsCard 
-              assignments={dashboardData?.recentAssignments || []} 
+
+            <AssignmentsCard
+              // @ts-ignore
+              assignments={dashboardData?.recentAssignments || []}
             />
           </>
         )}
       </div>
-      
+
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {isLoading ? (
           <>
@@ -162,9 +182,7 @@ export default function MentorDashboardPage() {
           </>
         ) : (
           <>
-            <StudentListCard 
-              students={dashboardData?.students || []} 
-            />
+            <StudentListCard students={dashboardData?.students || []} />
             <Card>
               <CardHeader>
                 <CardTitle>Recent Messages</CardTitle>
@@ -188,14 +206,18 @@ export default function MentorDashboardPage() {
                     ))}
                     <div className="text-center">
                       <Button variant="link" asChild>
-                        <a href="/mentor-dashboard/messages">View all messages</a>
+                        <a href="/mentor-dashboard/messages">
+                          View all messages
+                        </a>
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <div className="text-center py-8">
                     <MessageSquare className="mx-auto h-8 w-8 text-muted-foreground opacity-50 mb-2" />
-                    <p className="text-sm text-muted-foreground">No recent messages</p>
+                    <p className="text-sm text-muted-foreground">
+                      No recent messages
+                    </p>
                   </div>
                 )}
               </CardContent>
@@ -203,7 +225,7 @@ export default function MentorDashboardPage() {
           </>
         )}
       </div>
-      
+
       <ChatbotCard />
     </MentorDashboardShell>
   );
