@@ -1467,7 +1467,7 @@ export default function MentorMessagesPage() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  <TooltipProvider>
+                  {/* <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -1482,7 +1482,7 @@ export default function MentorMessagesPage() {
                         <p>Video call</p>
                       </TooltipContent>
                     </Tooltip>
-                  </TooltipProvider>
+                  </TooltipProvider> */}
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
