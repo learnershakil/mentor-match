@@ -15,18 +15,21 @@ interface UpcomingSession {
   date: string | Date;
   time: string;
   joinUrl: string;
+  interest?: string;
 }
 
 interface MentorScheduleCardProps {
   className?: string;
   sessions: UpcomingSession[];
   isLoading?: boolean;
+  interests?: string;
 }
 
 export function MentorScheduleCard({
   className,
   sessions,
   isLoading = false,
+  interests,
 }: MentorScheduleCardProps) {
   if (isLoading) {
     return (
@@ -135,7 +138,7 @@ export function MentorScheduleCard({
                   className="h-7 gap-1"
                   asChild
                 >
-                  <Link href={session.joinUrl}>
+                  <Link href={`http://localhost:5173/Session:%20${interests}`}>
                     <Video className="h-3.5 w-3.5" />
                     <span>Join</span>
                   </Link>

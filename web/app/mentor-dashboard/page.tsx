@@ -150,8 +150,9 @@ export default function MentorDashboardPage() {
           <>
             <MentorScheduleCard
               sessions={dashboardData?.upcomingSessions || []}
+              interests={dashboardData?.mentor.interest || []}
             />
-
+            
             <AssignmentsCard
               // @ts-ignore
               assignments={dashboardData?.recentAssignments || []}

@@ -309,7 +309,7 @@ export function UpcomingSessionsCard({
                   variant="outline"
                   size="sm"
                   className="h-7 text-xs"
-                  onClick={() => handleJoinSession(session.joinLink || "#")}
+                  onClick={() => handleJoinSession(`http://localhost:5173/Session:%20${session.category}` || "#")}
                 >
                   <Video className="mr-1 h-3 w-3" />
                   Join Session
