@@ -2,34 +2,68 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 
 // GET all users (admin only)
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "You must be logged in to access this resource" },
+        { status: 401 }
+      );
     }
 
+    // Get query parameters for filtering
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get("search") || "";
+    const role = searchParams.get("role") || undefined;
+    const limit = parseInt(searchParams.get("limit") || "50");
+
+    // Build the where clause
+    const where: any = {
+      id: { not: session.user.id }, // Exclude the current user
+    };
+
+    // Add role filter if provided
+    if (role) {
+      where.role = role;
+    }
+
+    // Add search filter if provided
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: "insensitive" } },
+        { lastName: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    // Fetch users
     const users = await prisma.user.findMany({
+      where,
       select: {
         id: true,
         firstName: true,
         lastName: true,
         email: true,
-        role: true,
         image: true,
-        createdAt: true,
+        role: true,
+        intrest: true,
       },
+      orderBy: {
+        firstName: "asc",
+      },
+      take: limit,
     });
 
     return NextResponse.json(users);
   } catch (error) {
     console.error("Error fetching users:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to fetch users" },
       { status: 500 }
     );
   }

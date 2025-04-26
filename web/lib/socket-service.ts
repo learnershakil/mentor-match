@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 
 // Types to match backend types
@@ -76,388 +75,214 @@ export type ConnectionState =
   | "disconnected"
   | "reconnecting";
 
+export interface SocketMessage {
+  type: string;
+  [key: string]: any;
+}
+
+// Socket service for real-time communication
 class SocketService {
   private socket: WebSocket | null = null;
-  private url: string;
-  private isConnected: boolean = false;
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
-  private reconnectDelay: number = 2000;
-  private reconnectTimeoutId: NodeJS.Timeout | null = null;
-  private messageListeners: MessageHandler[] = [];
-  private statusChangeListeners: StatusHandler[] = [];
+  private messageListeners: ((message: any) => void)[] = [];
   private userId: string | null = null;
-  private username: string | null = null;
+  private userName: string | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
 
-  constructor() {
-    // Use environment variable for WebSocket URL or fallback to localhost
-    this.url = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
+  // Initialize the socket connection
+  initialize(userId: string, userName: string) {
+    this.userId = userId;
+    this.userName = userName;
+    this.connect();
   }
 
   // Connect to the WebSocket server
-  connect(userId: string, username: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      this.userId = userId;
-      this.username = username;
-
-      if (this.socket?.readyState === WebSocket.OPEN) {
-        resolve(true);
-        return;
-      }
-
-      // Close existing socket if any
-      if (this.socket) {
-        this.socket.close();
-      }
-
-      // Create new socket
-      this.socket = new WebSocket(this.url);
+  connect() {
+    try {
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
+      this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
-        console.log("WebSocket connection established");
-        this.isConnected = true;
-        this.reconnectAttempts = 0;
-        this.notifyStatusChange(true);
+        console.log("WebSocket connected");
 
-        // Register with the server
-        this.sendMessage({
+        // Reset reconnect attempts on successful connection
+        this.reconnectAttempts = 0;
+
+        // Register the user
+        this.send({
           type: "register",
-          userId,
-          username,
+          userId: this.userId,
+          username: this.userName,
         });
 
-        resolve(true);
+        // Update connection state in store
+        useSocketStore.setState({
+          isConnected: true,
+          connectionState: "connected",
+        });
       };
 
       this.socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          this.handleMessage(message);
+
+          // Process user status updates
+          if (message.type === "userStatus") {
+            const { userId, status } = message;
+            useSocketStore.setState((state) => ({
+              userStatuses: {
+                ...state.userStatuses,
+                [userId]: status,
+              },
+            }));
+          }
+
+          // Notify all listeners
+          this.messageListeners.forEach((listener) => listener(message));
         } catch (error) {
-          console.error("Error parsing message:", error);
+          console.error("Error parsing WebSocket message:", error);
         }
       };
 
       this.socket.onclose = (event) => {
-        console.log(
-          `WebSocket connection closed: ${event.code} - ${event.reason}`
-        );
-        this.isConnected = false;
-        this.notifyStatusChange(false);
+        console.log("WebSocket disconnected:", event.code, event.reason);
+        useSocketStore.setState({
+          isConnected: false,
+          connectionState: "disconnected",
+        });
+
+        // Attempt to reconnect
         this.attemptReconnect();
       };
 
       this.socket.onerror = (error) => {
         console.error("WebSocket error:", error);
+        useSocketStore.setState({ connectionState: "error" });
       };
-    });
+    } catch (error) {
+      console.error("Error initializing WebSocket:", error);
+      useSocketStore.setState({ connectionState: "error" });
+    }
   }
 
-  // Try to reconnect after a connection loss
-  private attemptReconnect() {
-    if (this.reconnectTimeoutId) {
-      clearTimeout(this.reconnectTimeoutId);
-    }
-
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log("Max reconnect attempts reached");
-      return;
-    }
-
-    this.reconnectAttempts++;
-
-    this.reconnectTimeoutId = setTimeout(() => {
-      console.log(
-        `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
-      );
-      if (this.userId && this.username) {
-        this.connect(this.userId, this.username);
-      }
-    }, this.reconnectDelay * Math.min(this.reconnectAttempts, 3));
-  }
-
-  // Send a message to the server
-  sendMessage(message: any): boolean {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.error("WebSocket not connected");
-      return false;
-    }
-
-    // Add an ID if not present
-    if (!message.id) {
-      message.id = uuidv4();
-    }
-
-    try {
+  // Send a message through the WebSocket
+  send(message: SocketMessage) {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(message));
       return true;
-    } catch (error) {
-      console.error("Error sending message:", error);
-      return false;
     }
+    console.warn("WebSocket not connected, message not sent");
+    return false;
   }
 
   // Send a chat message
   sendChatMessage(
     senderId: string,
     conversationId: string,
-    text: string,
+    content: string,
     receiverId?: string,
-    attachments?: any[],
-    messageType:
-      | "TEXT"
-      | "FILE"
-      | "CALL_STARTED"
-      | "CALL_ENDED"
-      | "CALL_MISSED"
-      | "SYSTEM" = "TEXT"
-  ): string {
-    const messageId = uuidv4();
-
-    const message: ChatMessage = {
+    messageType: string = "TEXT"
+  ) {
+    return this.send({
       type: "message",
-      id: messageId,
       senderId,
       conversationId,
       receiverId,
-      text,
-      timestamp: Date.now(),
-      attachments,
+      content,
       messageType,
-    };
-
-    this.sendMessage(message);
-    return messageId;
-  }
-
-  // Send call signaling data
-  sendCallSignal(
-    signalType: string,
-    roomId: string,
-    senderId: string,
-    payload: any,
-    receiverId?: string
-  ): boolean {
-    const message: CallSignalingMessage = {
-      type: "callSignaling",
-      // @ts-ignore
-      id: uuidv4(),
-      signalType: signalType as any,
-      senderId,
-      receiverId,
-      roomId,
-      payload,
-    };
-
-    return this.sendMessage(message);
-  }
-
-  // Join a video call room
-  joinRoom(userId: string, roomId: string): boolean {
-    return this.sendMessage({
-      type: "joinRoom",
-      id: uuidv4(),
-      userId,
-      roomId,
-      username: this.username,
+      timestamp: Date.now(),
     });
   }
 
-  // Leave a video call room
-  leaveRoom(userId: string, roomId: string): boolean {
-    return this.sendMessage({
-      type: "leaveRoom",
-      id: uuidv4(),
-      userId,
-      roomId,
-    });
-  }
-
-  // Update user status
-  updateStatus(status: "online" | "offline" | "away"): boolean {
-    if (!this.userId) return false;
-
-    return this.sendMessage({
-      type: "userStatus",
-      id: uuidv4(),
+  // Send a typing indicator
+  sendTypingIndicator(conversationId: string, isTyping: boolean) {
+    return this.send({
+      type: "typing",
       userId: this.userId,
-      status,
-    });
-  }
-
-  // Handle incoming messages
-  private handleMessage(message: WebSocketMessage) {
-    // Notify all listeners
-    this.messageListeners.forEach((listener) => {
-      try {
-        listener(message);
-      } catch (error) {
-        console.error("Error in message listener:", error);
-      }
+      conversationId,
+      isTyping,
     });
   }
 
   // Add a message listener
-  addMessageListener(listener: MessageHandler): () => void {
-    this.messageListeners.push(listener);
+  addMessageListener(callback: (message: any) => void) {
+    this.messageListeners.push(callback);
     return () => {
       this.messageListeners = this.messageListeners.filter(
-        (l) => l !== listener
+        (listener) => listener !== callback
       );
     };
   }
 
-  // Add a connection status change listener
-  addStatusChangeListener(listener: StatusHandler): () => void {
-    this.statusChangeListeners.push(listener);
-    return () => {
-      this.statusChangeListeners = this.statusChangeListeners.filter(
-        (l) => l !== listener
-      );
-    };
+  // Attempt to reconnect
+  private attemptReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts += 1;
+      useSocketStore.setState({ connectionState: "reconnecting" });
+
+      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+      console.log(`Attempting to reconnect in ${delay / 1000} seconds...`);
+
+      this.reconnectTimeout = setTimeout(() => {
+        this.connect();
+      }, delay);
+    } else {
+      useSocketStore.setState({ connectionState: "failed" });
+      console.error("Maximum reconnect attempts reached");
+    }
   }
 
-  // Notify status change listeners
-  private notifyStatusChange(status: boolean) {
-    this.statusChangeListeners.forEach((listener) => {
-      try {
-        listener(status);
-      } catch (error) {
-        console.error("Error in status change listener:", error);
-      }
-    });
-  }
-
-  // Disconnect from the server
+  // Disconnect the socket
   disconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.socket) {
       this.socket.close();
       this.socket = null;
     }
 
-    if (this.reconnectTimeoutId) {
-      clearTimeout(this.reconnectTimeoutId);
-      this.reconnectTimeoutId = null;
-    }
-
-    this.isConnected = false;
     this.userId = null;
-    this.username = null;
-  }
-
-  // Check if connected
-  isSocketConnected(): boolean {
-    return this.isConnected;
+    this.userName = null;
+    this.reconnectAttempts = 0;
+    useSocketStore.setState({
+      isConnected: false,
+      connectionState: "disconnected",
+      userStatuses: {},
+    });
   }
 }
 
-// Create a global instance
+// Create a singleton instance
 export const socketService = new SocketService();
 
-// Create a state store for connection status
+// Zustand store for socket state
 interface SocketState {
   isConnected: boolean;
-  connectionState: ConnectionState;
+  connectionState:
+    | "connecting"
+    | "connected"
+    | "disconnected"
+    | "reconnecting"
+    | "error"
+    | "failed";
   userStatuses: Record<string, "online" | "offline" | "away">;
-  pendingMessages: Record<string, string[]>; // conversationId -> messageIds[]
-  connect: (userId: string, username: string) => Promise<boolean>;
+  connect: (userId: string, userName: string) => void;
   disconnect: () => void;
-  updateUserStatus: (
-    userId: string,
-    status: "online" | "offline" | "away"
-  ) => void;
-  addPendingMessage: (conversationId: string, messageId: string) => void;
-  removePendingMessage: (conversationId: string, messageId: string) => void;
 }
 
-export const useSocketStore = create<SocketState>((set, get) => ({
+export const useSocketStore = create<SocketState>((set) => ({
   isConnected: false,
   connectionState: "disconnected",
   userStatuses: {},
-  pendingMessages: {},
-
-  connect: async (userId: string, username: string) => {
+  connect: (userId: string, userName: string) => {
     set({ connectionState: "connecting" });
-
-    try {
-      const success = await socketService.connect(userId, username);
-
-      // Add status listener
-      socketService.addStatusChangeListener((connected) => {
-        set({
-          isConnected: connected,
-          connectionState: connected ? "connected" : "reconnecting",
-        });
-      });
-
-      // Add message listener for user statuses
-      socketService.addMessageListener((message) => {
-        if (message.type === "userStatus") {
-          set((state) => ({
-            userStatuses: {
-              ...state.userStatuses,
-              [message.userId]: message.status,
-            },
-          }));
-        } else if (message.type === "messageConfirm") {
-          // Remove confirmed message from pending
-          const { conversationId, originalId } = message;
-          if (conversationId && originalId) {
-            get().removePendingMessage(conversationId, originalId);
-          }
-        }
-      });
-
-      set({
-        isConnected: success,
-        connectionState: success ? "connected" : "disconnected",
-      });
-
-      return success;
-    } catch (error) {
-      set({ connectionState: "disconnected" });
-      return false;
-    }
+    socketService.initialize(userId, userName);
   },
-
   disconnect: () => {
     socketService.disconnect();
-    set({
-      isConnected: false,
-      connectionState: "disconnected",
-    });
-  },
-
-  updateUserStatus: (userId, status) => {
-    set((state) => ({
-      userStatuses: {
-        ...state.userStatuses,
-        [userId]: status,
-      },
-    }));
-  },
-
-  addPendingMessage: (conversationId, messageId) => {
-    set((state) => {
-      const existing = state.pendingMessages[conversationId] || [];
-      return {
-        pendingMessages: {
-          ...state.pendingMessages,
-          [conversationId]: [...existing, messageId],
-        },
-      };
-    });
-  },
-
-  removePendingMessage: (conversationId, messageId) => {
-    set((state) => {
-      const existing = state.pendingMessages[conversationId] || [];
-      return {
-        pendingMessages: {
-          ...state.pendingMessages,
-          [conversationId]: existing.filter((id) => id !== messageId),
-        },
-      };
-    });
   },
 }));
